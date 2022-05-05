@@ -2,7 +2,9 @@ package spring;
 
 import service.AppConfig;
 
+import java.beans.Introspector;
 import java.io.File;
+import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.net.URL;
 import java.util.concurrent.ConcurrentHashMap;
@@ -41,6 +43,9 @@ public class ApplicationContext {
                                 // 生成BeanDefinition
                                 Component component = clazz.getAnnotation(Component.class);
                                 String beanName = component.value();
+                                if (beanName.equals("")) {
+                                    beanName = Introspector.decapitalize(clazz.getSimpleName());
+                                }
                                 BeanDefinition beanDefinition = new BeanDefinition();
                                 beanDefinition.setType(clazz);
                                 if (clazz.isAnnotationPresent(Scope.class)) {
@@ -77,6 +82,17 @@ public class ApplicationContext {
         Class clazz = beanDefinition.getType();
         try {
             Object instance = clazz.getConstructor().newInstance();
+
+            /*
+            简单版依赖注入
+             */
+            for (Field field : clazz.getDeclaredFields()) {
+                if (field.isAnnotationPresent(Autowired.class)){
+                    field.setAccessible(true);
+                    field.set(instance, getBean(field.getName()));
+                }
+            }
+
             return instance;
         } catch (InstantiationException e) {
             e.printStackTrace();
