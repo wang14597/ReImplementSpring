@@ -7,6 +7,7 @@ import java.io.File;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.net.URL;
+import java.util.ArrayList;
 import java.util.concurrent.ConcurrentHashMap;
 
 /*
@@ -17,6 +18,7 @@ public class ApplicationContext {
     private Class<AppConfig> configClass;
     private ConcurrentHashMap<String, BeanDefinition> beanDefinitionMap = new ConcurrentHashMap<>();
     private ConcurrentHashMap<String, Object> singletonObjects = new ConcurrentHashMap<>();
+    private ArrayList<BeanPostProcessor> beanPostProcessorArrayList = new ArrayList<>();
 
     public ApplicationContext(Class<AppConfig> configClass) {
         this.configClass = configClass;
@@ -39,6 +41,10 @@ public class ApplicationContext {
                         try {
                             Class<?> clazz = classLoader.loadClass(className);
                             if (clazz.isAnnotationPresent(Component.class)) {
+                                if (BeanPostProcessor.class.isAssignableFrom(clazz)) {
+                                    Object newInstance = clazz.newInstance();
+                                    beanPostProcessorArrayList.add((BeanPostProcessor) newInstance);
+                                }
                                 // Bean
                                 // 生成BeanDefinition
                                 Component component = clazz.getAnnotation(Component.class);
@@ -58,6 +64,10 @@ public class ApplicationContext {
                                 beanDefinitionMap.put(beanName, beanDefinition);
                             }
                         } catch (ClassNotFoundException e) {
+                            e.printStackTrace();
+                        } catch (InstantiationException e) {
+                            e.printStackTrace();
+                        } catch (IllegalAccessException e) {
                             e.printStackTrace();
                         }
 
@@ -92,6 +102,32 @@ public class ApplicationContext {
                     field.set(instance, getBean(field.getName()));
                 }
             }
+
+            /*
+            Aware回调
+             */
+            if (instance instanceof BeanNameAware) {
+                ((BeanNameAware) instance).setBeanName(beanName);
+            }
+
+            for (BeanPostProcessor beanPostProcessor : beanPostProcessorArrayList) {
+                instance = beanPostProcessor.postProcessBeforeInitialization(beanName, instance);
+            }
+
+            /*
+            初始化
+             */
+            if (instance instanceof InitializingBean) {
+                ((InitializingBean) instance).afterPropertiesSet();
+            }
+
+            for (BeanPostProcessor beanPostProcessor : beanPostProcessorArrayList) {
+                instance = beanPostProcessor.postProcessAfterInitialization(beanName, instance);
+            }
+
+            /*
+             初始化后 AOP BeanPostProcessor
+             */
 
             return instance;
         } catch (InstantiationException e) {
